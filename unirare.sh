@@ -272,7 +272,14 @@ _main() {
   then
     _print_help
   else
-    _unirare "$@"
+    if [[ -z "${1:-}" ]]
+    then
+      uuid="$(uuidgen)"
+      echo "${uuid}" | pbcopy
+      echo "${uuid} (copied to clipboard)"
+    else
+      _unirare "$@"
+    fi
   fi
 }
 
