@@ -220,7 +220,7 @@ _unirare() {
 
     for file in *
     do
-      uuid="$(uuidgen)"
+      uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
       extension="${file##*.}"
 
       echo "Rename ${file} --> ${uuid}.${extension}"
@@ -244,7 +244,7 @@ _unirare() {
     do
       if [[ -e "${file}" ]]
       then
-        uuid="$(uuidgen)"
+        uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
         directory="$(dirname ${file})"
         extension="${file##*.}"
 
@@ -267,6 +267,8 @@ _unirare() {
 # Description:
 #   Entry point for the program, handling basic option parsing and dispatching.
 _main() {
+  # Set uuidgen-lower alias
+
   # Avoid complex option parsing when only one program option is expected.
   if [[ "${1:-}" =~ ^-h|--help$  ]]
   then
@@ -274,7 +276,7 @@ _main() {
   else
     if [[ -z "${1:-}" ]]
     then
-      uuid="$(uuidgen)"
+      uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
       echo "${uuid}" | pbcopy
       echo "${uuid} (copied to clipboard)"
     else
