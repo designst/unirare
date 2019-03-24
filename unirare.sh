@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #       _                 _
-#   ___(_)_ __ ___  _ __ | | ___
-#  / __| | '_ ` _ \| '_ \| |/ _ \
-#  \__ \ | | | | | | |_) | |  __/
-#  |___/_|_| |_| |_| .__/|_|\___|
+#   ___(_)_ __ ___  _ __ | | ___   _
+#  / __| | '_ ` _ \| '_ \| |/ _ \_| |_
+#  \__ \ | | | | | | |_) | |  __/_   _|
+#  |___/_|_| |_| |_| .__/|_|\___| |_|
 #                  |_|
 #
 # Boilerplate for creating a simple bash script with some basic strictness
-# checks and help features.
+# checks, help features, easy debug printing.
 #
 # Usage:
-#   bash-simple argument
+#   bash-simple-plus argument
 #
 # Depends on:
 #  list
@@ -160,6 +160,71 @@ IFS=$'\n\t'
 _ME=$(basename "${0}")
 
 ###############################################################################
+# Debug
+###############################################################################
+
+# _debug()
+#
+# Usage:
+#   _debug printf "Debug info. Variable: %s\n" "$0"
+#
+# A simple function for executing a specified command if the `$_USE_DEBUG`
+# variable has been set. The command is expected to print a message and
+# should typically be either `echo`, `printf`, or `cat`.
+__DEBUG_COUNTER=0
+_debug() {
+  if [[ "${_USE_DEBUG:-"0"}" -eq 1 ]]
+  then
+    __DEBUG_COUNTER=$((__DEBUG_COUNTER+1))
+    # Prefix debug message with "bug (U+1F41B)"
+    printf "🐛  %s " "${__DEBUG_COUNTER}"
+    "${@}"
+    printf "――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――\\n"
+  fi
+}
+# debug()
+#
+# Usage:
+#   debug "Debug info. Variable: $0"
+#
+# Print the specified message if the `$_USE_DEBUG` variable has been set.
+#
+# This is a shortcut for the _debug() function that simply echos the message.
+debug() {
+  _debug echo "${@}"
+}
+
+###############################################################################
+# Die
+###############################################################################
+
+# _die()
+#
+# Usage:
+#   _die printf "Error message. Variable: %s\n" "$0"
+#
+# A simple function for exiting with an error after executing the specified
+# command. The command is expected to print a message and should typically
+# be either `echo`, `printf`, or `cat`.
+_die() {
+  # Prefix die message with "cross mark (U+274C)", often displayed as a red x.
+  printf "❌  "
+  "${@}" 1>&2
+  exit 1
+}
+# die()
+#
+# Usage:
+#   die "Error message. Variable: $0"
+#
+# Exit with an error and print the specified message.
+#
+# This is a shortcut for the _die() function that simply echos the message.
+die() {
+  _die echo "${@}"
+}
+
+###############################################################################
 # Help
 ###############################################################################
 
@@ -171,86 +236,227 @@ _ME=$(basename "${0}")
 # Print the program help information.
 _print_help() {
   cat <<HEREDOC
-      _                 _
-  ___(_)_ __ ___  _ __ | | ___
- / __| | '_ \` _ \\| '_ \\| |/ _ \\
- \\__ \\ | | | | | | |_) | |  __/
- |___/_|_| |_| |_| .__/|_|\\___|
-                 |_|
+     _                 _
+ ___(_)_ __ ___  _ __ | | ___   _
+/ __| | '_ \` _ \\| '_ \\| |/ _ \\_| |_
+\\__ \\ | | | | | | |_) | |  __/_   _|
+|___/_|_| |_| |_| .__/|_|\\___| |_|
+                |_|
 
 Boilerplate for creating a simple bash script with some basic strictness
-checks and help features.
+checks and help features, and easy debug printing, and basic option handling.
 
 Usage:
-  ${_ME} [<arguments>]
+  ${_ME} [--options] [<arguments>]
   ${_ME} -h | --help
 
 Options:
-  -h --help  Show this screen.
+  -h --help  Display this help information.
 HEREDOC
 }
+
+###############################################################################
+# Options
+#
+# NOTE: The `getops` builtin command only parses short options and BSD `getopt`
+# does not support long arguments (GNU `getopt` does), so the most portable
+# and clear way to parse options is often to just use a `while` loop.
+#
+# For a pure bash `getopt` function, try pure-getopt:
+#   https://github.com/agriffis/pure-getopt
+#
+# More info:
+#   http://wiki.bash-hackers.org/scripting/posparams
+#   http://www.gnu.org/software/libc/manual/html_node/Argument-Syntax.html
+#   http://stackoverflow.com/a/14203146
+#   http://stackoverflow.com/a/7948533
+#   https://stackoverflow.com/a/12026302
+#   https://stackoverflow.com/a/402410
+###############################################################################
+
+# Parse Options ###############################################################
+
+# Initialize program option variables.
+_PRINT_HELP=0
+_USE_DEBUG=0
+
+# Initialize additional expected option variables.
+_OPTION_COPY=0
+_OPTION_NAME=0
+_OPTION_SHORT=0
+_OPTION_UPPER=0
+
+_OPTION_DIRECTORY=""
+_OPTION_FILE=""
+_OPTION_FILES=()
+_OPTION_PREFIX=""
+
+# _require_argument()
+#
+# Usage:
+#   _require_argument <option> <argument>
+#
+# If <argument> is blank or another option, print an error message and  exit
+# with status 1.
+_require_argument() {
+  # Set local variables from arguments.
+  #
+  # NOTE: 'local' is a non-POSIX bash feature and keeps the variable local to
+  # the block of code, as defined by curly braces. It's easiest to just think
+  # of them as local to a function.
+  local _option="${1:-}"
+  local _argument="${2:-}"
+
+  if [[ -z "${_argument}" ]] || [[ "${_argument}" =~ ^- ]]
+  then
+    _die printf "Option requires a argument: %s\\n" "${_option}"
+  fi
+}
+
+while [[ ${#} -gt 0 ]]
+do
+  __option="${1:-}"
+  __maybe_param="${2:-}"
+  case "${__option}" in
+    -c|--copy)
+      _OPTION_COPY=1
+      ;;
+    -d|--directory)
+      _require_argument "${__option}" "${__maybe_param}"
+      _OPTION_DIRECTORY="${__maybe_param}"
+      shift
+      ;;
+    -f|--file)
+      _require_argument "${__option}" "${__maybe_param}"
+      _OPTION_FILE="${__maybe_param}"
+      shift
+      ;;
+    -n|--name)
+      _OPTION_NAME=1
+      ;;
+    -p|--prefix)
+      _require_argument "${__option}" "${__maybe_param}"
+      _OPTION_PREFIX="${__maybe_param}"
+      shift
+      ;;
+    -s|--short)
+      _OPTION_SHORT=1
+      ;;
+    -u|--upper)
+      _OPTION_UPPER=1
+      ;;
+    -h|--help)
+      _PRINT_HELP=1
+      ;;
+    --debug)
+      _USE_DEBUG=1
+      ;;
+    --endopts)
+      # Terminate option parsing.
+      break
+      ;;
+    -*)
+      _die printf "Unexpected option: %s\\n" "${__option}"
+      ;;
+  esac
+  shift
+done
 
 ###############################################################################
 # Program Functions
 ###############################################################################
 
-_unirare() {
-  if [[ -z "${1:-}" ]]
+uuid=""
+
+_uuid() {
+  if ((_OPTION_UPPER))
   then
-    echo "No file or directory specified"
-    exit 1
+    uuid="$(uuidgen)"
+    _debug printf "UPPER-CASE uuid: %s\\n" "${uuid}"
+  else
+    uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
+    _debug printf "lower-case uuid: %s\\n" "${uuid}"
   fi
 
-  if [[ -d "${1}" ]]
+  if ((_OPTION_SHORT))
   then
-    cd "${1}"
+    uuid="${uuid:0:8}"
+  fi
+}
 
-    for file in *
-    do
-      echo "${file}"
-    done
+_simple() {
+  _debug printf ">> Performing operation...\\n"
 
-    read -p "Are you sure you want to rename all these files? [y|N] " -n 1 -r
-    echo
+  _uuid
 
-    if [[ ! "${REPLY}" =~ ^[Yy]$ ]]
-    then
-      [[ "${0}" = "${BASH_SOURCE}" ]] && exit 1 || return 1
-    fi
-
-    for file in *
-    do
-      uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
-      extension="${file##*.}"
-
-      echo "Rename ${file} --> ${uuid}.${extension}"
-      mv "${file}" "${uuid}.${extension}"
-    done
+  if ((_OPTION_COPY))
+  then
+    printf "${uuid}" | pbcopy
+    printf "%s copied to clipboard" "${uuid}"
   else
-    for file in "${@:-}"
+    if [[ -z "${_OPTION_DIRECTORY}" && -z "${_OPTION_FILE}" ]]
+    then
+      _die printf "No file or directory specified\\n"
+    fi
+
+    if [[ -n "${_OPTION_DIRECTORY}" ]]
+    then
+      if [[ ! -d "${_OPTION_DIRECTORY}" ]]
+      then
+        _die printf "Directory not found: %s\\n" "${_OPTION_DIRECTORY}"
+      fi
+
+      cd "${_OPTION_DIRECTORY}"
+
+      for file in *
+      do
+        _OPTION_FILES+=("${file}")
+      done
+    fi
+
+    if [[ -n "${_OPTION_FILE}" ]]
+    then
+      _OPTION_FILES+=("${_OPTION_FILE}")
+    fi
+
+    for file in "${_OPTION_FILES[@]}"
     do
-      echo "${file}"
+      if [[ ! -e "${file}" ]]
+      then
+        _die printf "File not found: %s\\n" "${file}"
+      fi
+
+      printf "${file}\\n"
     done
 
+    printf "\\n"
+
     read -p "Are you sure you want to rename all these files? [y|N] " -n 1 -r
-    echo
+    printf "\\n\\n"
 
     if [[ ! "${REPLY}" =~ ^[Yy]$ ]]
     then
       [[ "${0}" = "${BASH_SOURCE}" ]] && exit 1 || return 1
     fi
 
-    for file in "${@:-}"
+    for file in "${_OPTION_FILES[@]}"
     do
-      if [[ -e "${file}" ]]
-      then
-        uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
-        directory="$(dirname ${file})"
-        extension="${file##*.}"
+      directory="$(dirname ${file})"
+      extension="${file##*.}"
+      filename="${file%.*}"
 
-        echo "Rename ${file} --> ${directory}/${uuid}.${extension}"
-        mv "${file}" "${directory}/${uuid}.${extension}"
+      new_file="${directory}/${uuid}.${extension}"
+
+      if ((_OPTION_NAME))
+      then
+        new_file="${filename}-${uuid}.${extension}"
       fi
+
+      printf "Rename %s --> %s\\n" "${file}" "${new_file}"
+
+      mv "${file}" "${new_file}"
+
+      _uuid
     done
   fi
 }
@@ -267,21 +473,11 @@ _unirare() {
 # Description:
 #   Entry point for the program, handling basic option parsing and dispatching.
 _main() {
-  # Set uuidgen-lower alias
-
-  # Avoid complex option parsing when only one program option is expected.
-  if [[ "${1:-}" =~ ^-h|--help$  ]]
+  if ((_PRINT_HELP))
   then
     _print_help
   else
-    if [[ -z "${1:-}" ]]
-    then
-      uuid="$(uuidgen | tr "[:upper:]" "[:lower:]")"
-      echo "${uuid}" | pbcopy
-      echo "${uuid} (copied to clipboard)"
-    else
-      _unirare "$@"
-    fi
+    _simple "$@"
   fi
 }
 
