@@ -445,12 +445,19 @@ _simple() {
       extension="${file##*.}"
       filename="${file%.*}"
 
-      new_file="${directory}/${uuid}.${extension}"
+      new_file="${uuid}.${extension}"
 
       if ((_OPTION_NAME))
       then
-        new_file="${filename}-${uuid}.${extension}"
+        new_file="${filename}-${new_file}"
       fi
+
+      if [[ ! -z _OPTION_PREFIX ]]
+      then
+        new_file="${_OPTION_PREFIX}-${new_file}"
+      fi
+
+      new_file="${directory}/${new_file}"
 
       printf "Rename %s --> %s\\n" "${file}" "${new_file}"
 
